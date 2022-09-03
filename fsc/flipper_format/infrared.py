@@ -1,5 +1,6 @@
 from typing import List, Union
-from flipper_format import EOFException, FlipperFormat, marshal
+
+from fsc.flipper_format.base import EOFException, FlipperFormat, marshal
 
 MAX_DATA_PER_LINE = 50
 

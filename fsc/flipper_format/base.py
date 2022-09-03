@@ -15,7 +15,7 @@ class FlipperFormat:
         self.fd = open(self.file_name, "r", encoding="UTF-8")
 
     def __enter__(self):
-        pass
+        return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         print("exiting")
