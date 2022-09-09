@@ -11,6 +11,9 @@ class BaseSignal:
     def __init__(self, is_raw: bool, name: str) -> None:
         self.is_raw = is_raw
         self.name = name
+    
+    def get_name(self):
+        return self.name
 
 class RawSignal(BaseSignal):
     """
@@ -27,12 +30,15 @@ class RawSignal(BaseSignal):
         self.duty_circle = duty_circle
         self.data = data
    
-    def __str__(self) -> str:
-        r = marshal({
+    def to_obj(self):
+        return {
             "name": self.name,
             "frequency": self.frequency,
             "duty_circle": self.duty_circle,
-        })
+        }
+
+    def __str__(self) -> str:
+        r = marshal(self.to_obj())
         for i in range(0, len(self.data), MAX_DATA_PER_LINE):
             pass
             r += f"\ndata: {' '.join([str(z) for z in self.data[i:i + MAX_DATA_PER_LINE]])}"
@@ -56,13 +62,16 @@ class ParsedSignal(BaseSignal):
         self.address = address
         self.command = command
 
-    def __str__(self) -> str:
-        return marshal({
+    def to_obj(self):
+        return {
             "name": self.name,
             "protocol": self.protocol,
             "address": _to_hex_str(self.address),
             "command": _to_hex_str(self.command)
-        })
+        }
+
+    def __str__(self) -> str:
+        return marshal(self.to_obj())
 
     def __hash__(self) -> int:
         return hash(f"{_to_hex_str(self.command)}@{_to_hex_str(self.address)}::{self.protocol}".replace(" ", "#").lower())

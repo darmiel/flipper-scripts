@@ -18,7 +18,6 @@ class FlipperFormat:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        print("exiting")
         self.fd.close()
 
     def close(self):
