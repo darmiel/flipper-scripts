@@ -21,9 +21,15 @@ def write_all_ir_json(file_name, signals):
     with open(file_name, "w") as f:
         json.dump([z.to_obj() for z in signals], f)
 
-def write_all_ir_ir(file_name, signals):
+def write_all_ir_ir(file_name, signals, with_source=False):
     with open(file_name, "w", encoding="UTF-8") as f:
-        f.write("\n#\n".join([str(signal) for signal in signals]))
+        if not with_source:
+            f.write("\n#\n".join([str(signal) for signal in signals]))
+        else:
+            for signal in signals:
+                f.write(f"# {signal.get_source()}\n")
+                f.write(str(signal))
+                f.write("\n")
 
 def write_all_ir(file_name, signals):
     if file_name.endswith(".json"):

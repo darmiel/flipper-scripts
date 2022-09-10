@@ -17,5 +17,5 @@ if __name__ == "__main__":
     all.sort(key=lambda x: x.get_name(), reverse=ORDER == "DESC")
 
     # write to file
-    write_all_ir_ir(OUTPUT_FILE + ".ir", all)
+    write_all_ir_ir(OUTPUT_FILE + ".ir", all, with_source=True)
     write_all_ir_json(OUTPUT_FILE + ".json", all)

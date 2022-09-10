@@ -8,12 +8,16 @@ def _to_hex_str(nums: list, sep: str = ' ') -> str:
     return sep.join([hex(z)[2:].zfill(2) for z in nums]).upper()
 
 class BaseSignal:
-    def __init__(self, is_raw: bool, name: str) -> None:
+    def __init__(self, src: str, is_raw: bool, name: str) -> None:
+        self.src = src
         self.is_raw = is_raw
         self.name = name
     
     def get_name(self):
         return self.name
+
+    def get_source(self):
+        return self.src
 
 class RawSignal(BaseSignal):
     """
@@ -24,8 +28,8 @@ class RawSignal(BaseSignal):
     data: 8437 4188 538 1565 539 1565 539 513 544 508 538 513 544 1559 545
     """
 
-    def __init__(self, name: str, frequency: int, duty_circle: float, data: list) -> None:
-        super().__init__(True, name)
+    def __init__(self, src: str, name: str, frequency: int, duty_circle: float, data: list) -> None:
+        super().__init__(src, True, name)
         self.frequency = frequency
         self.duty_circle = duty_circle
         self.data = data
@@ -40,7 +44,6 @@ class RawSignal(BaseSignal):
     def __str__(self) -> str:
         r = marshal(self.to_obj())
         for i in range(0, len(self.data), MAX_DATA_PER_LINE):
-            pass
             r += f"\ndata: {' '.join([str(z) for z in self.data[i:i + MAX_DATA_PER_LINE]])}"
         return r
 
@@ -56,8 +59,8 @@ class ParsedSignal(BaseSignal):
     command: 15 00 00 00
     """
 
-    def __init__(self, name: str, protocol: str, address: List[int], command: List[int]) -> None:
-        super().__init__(False, name)
+    def __init__(self, src: str, name: str, protocol: str, address: List[int], command: List[int]) -> None:
+        super().__init__(src, False, name)
         self.protocol = protocol
         self.address = address
         self.command = command
@@ -92,13 +95,13 @@ def _parse_raw(fff: FlipperFormat, name: str) -> RawSignal:
         except EOFException:
             break
 
-    return RawSignal(name, frequency=freq, duty_circle=dc, data=data)
+    return RawSignal(fff.get_file_name(), name, frequency=freq, duty_circle=dc, data=data)
 
 def _parse_parsed(fff: FlipperFormat, name: str) -> ParsedSignal:
     protocol = fff.read_str("protocol")
     address = fff.read_hex_multi("address")
     command = fff.read_hex_multi("command")
-    return ParsedSignal(name, protocol=protocol, address=address, command=command)
+    return ParsedSignal(fff.get_file_name(), name, protocol=protocol, address=address, command=command)
 
 def read_ir(fff: FlipperFormat) -> List[Union[RawSignal, ParsedSignal]]:
     while True:

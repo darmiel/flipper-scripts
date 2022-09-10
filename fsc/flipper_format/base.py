@@ -25,6 +25,9 @@ class FlipperFormat:
 
     # ------------------------------------------------------------
 
+    def get_file_name(self):
+        return self.file_name
+
     def rewind(self) -> None:
         self.fd.seek(0)
     
