@@ -30,6 +30,8 @@ class Check:
 class WhiteSpaceCheck(Check):
     """
     checks for whitespace at the end of a line
+    'name: test '
+               ^
     """
     def __init__(self) -> None:
         super().__init__()
@@ -56,6 +58,9 @@ class DescriptorCheck(Check):
         return []
 
 class NonASCIICheck(Check):
+    """
+    checks a line for non-ASCII characters
+    """
     def __init__(self) -> None:
         super().__init__()
         self.pattern = re.compile(r"[^\x20-\x7E]")
@@ -68,6 +73,14 @@ class NonASCIICheck(Check):
         return [span[0], span[1], "non-ASCII character found"]
 
 class KeyValueValidityCheck(Check):
+    """
+    checks if an .ir file only contains valid key-value pairs
+    'test: abc'
+     ^^^^
+
+    'test:abc'
+     ^^^^^^^^
+    """
     def __init__(self) -> None:
         super().__init__()
         self.pattern_str = r"^([A-Za-z-_]+):\s.+$"
@@ -93,6 +106,10 @@ class KeyValueValidityCheck(Check):
         return EXIT_CURRENT_LINE
 
 class SignalKeyOrderCheck(Check):
+    """
+    since the order of the key-value pairs is important, the order is checked here.
+    `name` must always be followed by `type`, otherwise there will be problems
+    """
     def __init__(self) -> None:
         super().__init__()
         self.ignored_order_keys = [
@@ -120,7 +137,10 @@ class SignalKeyOrderCheck(Check):
         return EXIT_CURRENT_CHECK_FOR_ALL_LINES
 
     def check(self, _: int, line: str) -> list:
-        key, value = line.split(": ", 2)
+        split = line.split(": ", 2)
+        if len(split) != 2:
+            return [0, len(line), "cannot unpack key-value"]
+        key, value = split
 
         if key in self.ignored_order_keys:
             return []
@@ -153,7 +173,7 @@ class SignalKeyOrderCheck(Check):
 
 ###
 
-def check_file(fd: TextIOWrapper) -> str:
+def check_file(fd: TextIOWrapper, on_found = None) -> bool:
     """
     checks a file for errors
     """
@@ -166,6 +186,8 @@ def check_file(fd: TextIOWrapper) -> str:
     ]
     comment_checks = []
 
+    did_pass = True
+
     for _lnr, line in enumerate([z.strip("\n") for z in fd.readlines()]):
         lnr = _lnr + 1 # human readable line numbers
 
@@ -173,6 +195,8 @@ def check_file(fd: TextIOWrapper) -> str:
         # comments
         if line.startswith("#"):
             checks = comment_checks
+        elif len(line.strip()) == 0:
+            continue # ignore empty lines
         else:
             checks = normal_checks
         
@@ -180,6 +204,9 @@ def check_file(fd: TextIOWrapper) -> str:
             resp = check.check(lnr, line)
             if resp is None or len(resp) == 0:
                 continue # check did pass
+
+            did_pass = False
+            on_found()
             
             if type(resp) is list:
                 if len(resp) == 3:
@@ -193,11 +220,14 @@ def check_file(fd: TextIOWrapper) -> str:
                 message = resp
                 mark_from, mark_to = None, None
 
-            print()
-            print(f"error at line {lnr}: {message}")
+            print(f"error at line {lnr}:")
             print(line)
             if mark_from is not None:
-                print(f"{' ' * (mark_from)}{'^'*(mark_to - mark_from)}")
+                print(f"{' ' * mark_from}{'^'*(mark_to - mark_from)}")
+                print(f"{' ' * mark_from}{message}")
+            else:
+                print(message)
+            print()
             
             exit_rule = check.exit_rule()
             if exit_rule == EXIT_ALL_LINES:
@@ -208,10 +238,35 @@ def check_file(fd: TextIOWrapper) -> str:
                 check.set_active(False)
                 break
 
-    return ""
-
+    return did_pass
 
 
 if __name__ == "__main__":
-    with open("test.ir", "r") as fd:
-        check_file(fd)
+    from glob import glob
+
+    total_count = 0
+
+    for file in glob("**/*.ir", recursive=True):
+        with open(file, "r", encoding='UTF-8') as fd:
+            print_header = False
+            count = 0
+            h2 = ""
+            def on_found():
+                global print_header, count, total_count, h2
+                count+=1
+                total_count += 1
+                if print_header:
+                    return
+                print_header = True
+                header = f"[ir-linter] checking '{file}'"
+                h2 = "#" * len(header)
+                print(h2)
+                print(header)
+
+            res = check_file(fd, on_found)
+        if not res: 
+            print(f"[ir-linter] found {count} warnings/errors in that file.")
+            print(h2)
+            print()
+    
+    print(f"[ir-linter] found a total of {total_count} warnings/errors")
