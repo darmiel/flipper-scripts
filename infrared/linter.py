@@ -3,8 +3,10 @@ roughly checks an .ir file for errors.
 no warranty.
 """
 
-from io import TextIOWrapper
 import re
+import sys
+
+from io import TextIOWrapper
 
 EXIT_NONE = 0
 EXIT_CURRENT_LINE = 1
@@ -242,31 +244,25 @@ def check_file(fd: TextIOWrapper, on_found = None) -> bool:
 
 
 if __name__ == "__main__":
-    from glob import glob
-
     total_count = 0
 
-    for file in glob("**/*.ir", recursive=True):
+    for file in sys.argv[1:]:
+        header = f"[lint] checking '{file}'"
+        print('*'*len(header))
+        print(header)
+
+        count = 0
         with open(file, "r", encoding='UTF-8') as fd:
-            print_header = False
-            count = 0
-            h2 = ""
             def on_found():
-                global print_header, count, total_count, h2
+                global count, total_count
                 count+=1
                 total_count += 1
-                if print_header:
-                    return
-                print_header = True
-                header = f"[ir-linter] checking '{file}'"
-                h2 = "#" * len(header)
-                print(h2)
-                print(header)
 
             res = check_file(fd, on_found)
-        if not res: 
-            print(f"[ir-linter] found {count} warnings/errors in that file.")
-            print(h2)
-            print()
+
+        print(f"[lint] found {count} warnings/errors in file.")
+        print('*'*len(header))
+        print()
     
-    print(f"[ir-linter] found a total of {total_count} warnings/errors")
+    print(f"[linter] found a total of {total_count} warnings/errors")
+    exit(0 if total_count == 0 else 1)
