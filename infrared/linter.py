@@ -15,6 +15,8 @@ EXIT_CURRENT_LINE = 1
 EXIT_ALL_LINES = 2
 EXIT_CURRENT_CHECK_FOR_ALL_LINES = 3
 
+###
+
 class Mark:
     def __init__(self, start: int, end: int) -> None:
         self.start = start
@@ -38,8 +40,11 @@ def create_mark_underline_array(length: int, marks: List[Mark], symbol='^') -> L
 def create_mark_underline(length: int, marks: List[Mark]) -> str:
     return ''.join(create_mark_underline_array(length, marks))
 
+###
+
 class Result:
-    def __init__(self, marks: List[Mark], error: str, suggestion: str) -> None:
+    def __init__(self, exit_rule: int, marks: List[Mark], error: str, suggestion: str) -> None:
+        self.exit_rule = exit_rule
         self.marks = marks
         self.error = error
         self.suggestion = suggestion
@@ -48,32 +53,12 @@ class Result:
         for mark in self.marks:
             mark.fix(line)
 
-def result_simple_output():
-    def callback(_: str, lnr: int, line: str, result: Result):
-        # print line number
-        print("Error in line", lnr)
-        print(f"'{line}'")
-
-        mark = create_mark_underline_array(len(line), result.marks, symbol='↑')
-        print("", ''.join(mark))
-        print((' '*(mark.index("↑") + 1)) + "[error]:", result.error)
-
-        # print suggestion
-        if result.suggestion is not None:
-            print(f"[suggested] '{result.suggestion}'")
-        print("---")
-    return callback
-
-def result_github_output():
-    pass
-
-# change the output format here
-RESULT_CALLBACK = result_simple_output()
-
-###
+    def with_exit_rule(self, exit_rule: int) -> 'Result':
+        self.exit_rule = exit_rule
+        return self
 
 def multi_mark_result(marks: List[Mark], error: str, suggestion: str = None) -> Result:
-    return Result(marks, error, suggestion)
+    return Result(-1, marks, error, suggestion)
 
 def single_mark_result(mark_from: int, mark_to: int, error: str, suggestion: str = None) -> Result:
     return multi_mark_result([Mark(mark_from, mark_to)], error, suggestion)
@@ -89,12 +74,18 @@ def single_mark_result_to(mark_to: int, error: str, suggestion: str = None) -> R
 class Context:
     def __init__(self) -> None:
         self.result = {}
+        self.last_key = None
     
     def update_result(self, check: type, result: Result) -> None:
         self.result[check] = result
 
     def did_check_fail(self, check: type) -> bool:
-        return check in self.result and len(self.result[check]) > 0
+        return check in self.result
+    
+    def set_last_key(self, key: str) -> None:
+        self.last_key = key
+
+###
 
 class Check:
     def __init__(self) -> None:
@@ -112,12 +103,6 @@ class Check:
         """
         pass
     
-    def exit_rule(self) -> int:
-        """
-        controls how to react when this check fails
-        """
-        return EXIT_NONE
-
     def set_active(self, active: bool):
         self.active = active
     
@@ -127,24 +112,17 @@ class Check:
 class EmptyLineCheck(Check):
     def check(self, ctx: Context, lnr: int, line: str) -> Result:
         if len(line.strip()) == 0:
-            return single_mark_result(0, 1, "empty lines are not allowed. use comments for separation", suggestion="#")
+            return single_mark_result(0, 1, "empty lines are not allowed. use comments for separation", suggestion="#") \
+                .with_exit_rule(EXIT_CURRENT_LINE)
         return None
     
-    def exit_rule(self) -> int:
-        """
-        this line should not be processed further
-        """
-        return EXIT_CURRENT_LINE
-
 class WhiteSpaceCommentCheck(Check):
     def check(self, ctx: Context, lnr: int, line: str) -> Result:
         if line.strip().startswith("#") and not line.startswith("#"):
-            return single_mark_result_to(line.index("#"), "white space before comment not allowed", suggestion=line.strip())
+            return single_mark_result_to(line.index("#"), "white space before comment not allowed", suggestion=line.strip()) \
+                .with_exit_rule(EXIT_CURRENT_LINE)
         return None
     
-    def exit_rule(self) -> int:
-        return EXIT_CURRENT_LINE
-
 class WhiteSpaceCheck(Check):
     """
     checks for whitespace at the end of a line
@@ -249,16 +227,17 @@ class KeyValueValidityCheck(Check):
     def check(self, ctx: Context, lnr: int, line: str) -> Result:
         # parse key
         if not ':' in line:
-            return single_mark_result_from(0, "line is no key-value pair. ':' expected")
+            return single_mark_result_from(0, "line is no key-value pair. 'key: value' expected") \
+                .with_exit_rule(EXIT_CURRENT_LINE)
         
         # check that value starts witih ' '
-        # name:value should be
-        # name: value
+        # 'name:value' should be 'name: value'
         value_start_index = line.index(":") + 1
         if not line[value_start_index:].startswith(' '):
+            # error but don't stop processing current line
             return single_mark_result(
                 value_start_index - 1, value_start_index, "space missing after ':'", 
-                suggestion=line[:value_start_index-1] +" " + line[value_start_index:]
+                suggestion=line[:value_start_index] +" " + line[value_start_index:]
             )
 
         # check generic pattern
@@ -273,13 +252,11 @@ class KeyValueValidityCheck(Check):
             suggestion = None
             if len(similar) > 0:
                 suggestion = f"{similar[0]}:{line[value_start_index:]}"
-            return single_mark_result_to(len(key), f"key '{key}' unknown", suggestion=suggestion)
+            return single_mark_result_to(len(key), f"key '{key}' unknown", suggestion=suggestion).with_exit_rule(EXIT_NONE)
         
+        ctx.set_last_key(key)
         return None
         
-    def exit_rule(self) -> int:
-        return EXIT_CURRENT_LINE
-
 class SignalKeyOrderCheck(Check):
     """
     since the order of the key-value pairs is important, the order is checked here.
@@ -309,23 +286,28 @@ class SignalKeyOrderCheck(Check):
             "data": ["data", "name"]
         }
 
-    def exit_rule(self) -> int:
-        return EXIT_CURRENT_CHECK_FOR_ALL_LINES
-
     def check(self, ctx: Context, lnr: int, line: str) -> Result:
-        split = line.split(": ", 2)
+        split = line.split(":", 2)
         if len(split) != 2:
             return single_mark_result_from(0, "cannot unpack key-value")
         key, value = split
+        key, value = key.strip(), value.strip()
 
         if key in self.ignored_order_keys:
             return None
         
-        key_end = line.index(": ")
-        value_start = key_end + 2
+        key_end = line.index(":")
+        
+        value_start = key_end + 1
+        for c in line[key_end + 1:]:
+            if c == ' ':
+                value_start += 1
+            else:
+                break
 
         if not key in self.order:
-            return single_mark_result_to(key_end, "key has no order-rule")
+            return single_mark_result_to(key_end, "key has no order-rule") \
+                .with_exit_rule(EXIT_CURRENT_CHECK_FOR_ALL_LINES)
 
         # always start order-search with "name"
         if self.expected_key is None:
@@ -333,23 +315,26 @@ class SignalKeyOrderCheck(Check):
         
         if type(self.expected_key) is list:
             if not key in self.expected_key:
-                return single_mark_result_to(key_end, f"one of keys '{', '.join(self.expected_key)}' expected")
+                return single_mark_result_to(key_end, f"one of keys '{', '.join(self.expected_key)}' expected") \
+                    .with_exit_rule(EXIT_CURRENT_CHECK_FOR_ALL_LINES)
         else:
             if key != self.expected_key:
                 return single_mark_result_to(
                     key_end, f"key '{self.expected_key}' expected", 
                     suggestion=f"{self.expected_key}: ..."
-                )
+                ).with_exit_rule(EXIT_CURRENT_CHECK_FOR_ALL_LINES)
         
         next_expected = self.order[key]
         if type(next_expected) is str or type(next_expected) is list:
             self.expected_key = next_expected
         elif type(next_expected) is dict:
             if not value in next_expected:
-                return single_mark_result_from( value_start, f"[check-error]: can't find next expected key in [{', '.join(next_expected.keys())}]")
+                return single_mark_result_from( value_start, f"[check-error]: can't find next expected key in [{', '.join(next_expected.keys())}]") \
+                    .with_exit_rule(EXIT_CURRENT_CHECK_FOR_ALL_LINES)
             self.expected_key = next_expected[value]
         else:
-            return single_mark_result_to(key_end, "[check-error]: something weird happened. Please create an issue on GitHub.")
+            return single_mark_result_to(key_end, "[check-error]: something weird happened. Please create an issue on GitHub.") \
+                .with_exit_rule(EXIT_CURRENT_CHECK_FOR_ALL_LINES)
         
         return None
 
@@ -377,6 +362,8 @@ def check_file(file_path: str, fd: TextIOWrapper, on_found = None) -> bool:
     ]
 
     did_pass = True
+    context = Context()
+
     for _lnr, line in enumerate([z.strip("\n") for z in fd.readlines()]):
         lnr = _lnr + 1 # human readable line numbers
 
@@ -386,7 +373,6 @@ def check_file(file_path: str, fd: TextIOWrapper, on_found = None) -> bool:
         else:
             checks = normal_checks
         
-        context = Context()
         for check in [z for z in checks if z.is_active()]:
             # check if check is disabled because a previous check failed
             if type(check.ignore_if_failed) is list and type(check) in check.ignore_if_failed:
@@ -413,14 +399,13 @@ def check_file(file_path: str, fd: TextIOWrapper, on_found = None) -> bool:
             # pass result to callback
             on_found(file_path, lnr, line, resp)
             
-            exit_rule = check.exit_rule()
-            if exit_rule == EXIT_ALL_LINES:
+            if resp.exit_rule == EXIT_ALL_LINES:
                 # cancel all other checks for all other lines
                 return did_pass
-            elif exit_rule == EXIT_CURRENT_LINE:
+            elif resp.exit_rule == EXIT_CURRENT_LINE:
                 # cancel all other checks for current line
                 break
-            elif exit_rule == EXIT_CURRENT_CHECK_FOR_ALL_LINES:
+            elif resp.exit_rule == EXIT_CURRENT_CHECK_FOR_ALL_LINES:
                 # cancel current check for all other lines
                 check.set_active(False)
                 break
@@ -430,6 +415,10 @@ def check_file(file_path: str, fd: TextIOWrapper, on_found = None) -> bool:
 
 if __name__ == "__main__":
     total_count = 0
+
+    # change the output format here
+    from lint_simple_format import result_simple_output
+    error_callback = result_simple_output()
 
     for file in sys.argv[1:]:
         header = f"[lint] checking '{file}'"
@@ -446,7 +435,7 @@ if __name__ == "__main__":
                 total_count += 1
 
                 # pass callback to second-level callback
-                RESULT_CALLBACK(file_path, lnr, line, result)
+                error_callback(file_path, lnr, line, result)
 
             res = check_file(file, fd, proxy_callback)
 
