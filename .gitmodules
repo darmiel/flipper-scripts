@@ -1,0 +1,3 @@
+[submodule "infrared/fff-ir-lint"]
+	path = infrared/fff-ir-lint
+	url = git@github.com:darmiel/fff-ir-lint.git
