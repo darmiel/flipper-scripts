@@ -12,7 +12,14 @@ class BaseSignal:
         self.src = src
         self.is_raw = is_raw
         self.name = name
+        self.last_comment = None
     
+    def set_last_comment(self, comment: str) -> None:
+        self.last_comment = comment
+    
+    def get_last_comment(self) -> None:
+        return self.last_comment
+
     def get_name(self):
         return self.name
 
@@ -117,7 +124,7 @@ def read_ir(fff: FlipperFormat) -> List[Union[RawSignal, ParsedSignal]]:
             r = _parse_parsed(fff, name)
         else:
             raise Exception(f"unknown signal type '{typ}'")
-
+        r.set_last_comment(fff.get_last_comment())
         yield r
 
 if __name__ == "__main__":

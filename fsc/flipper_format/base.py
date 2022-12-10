@@ -9,6 +9,7 @@ class NotAPair(Exception): pass
 
 class FlipperFormat:
     file_name: str
+    last_comment: str
 
     def __init__(self, file_name):
         self.file_name = file_name
@@ -31,11 +32,18 @@ class FlipperFormat:
     def rewind(self) -> None:
         self.fd.seek(0)
     
+    def get_last_comment(self) -> str:
+        return self.last_comment
+    
     def _read_next_line_pair(self) -> List[str]:
         line = self.fd.readline()
         if not line: # EOL
             raise EOFException()
-        # ignore comments or empty lines
+        # store last comment
+        # but ignore them for pairs
+        if line.startswith("#"):
+            self.last_comment = line[1:].strip()
+            raise NotAPair()
         # if we want to read a key:value pair, the line should contain a ":"
         if line.startswith("#") or line.strip() == "" or not ":" in line:
             raise NotAPair()
