@@ -44,6 +44,7 @@ class RawSignal(BaseSignal):
     def to_obj(self):
         return {
             "name": self.name,
+            "type": "raw",
             "frequency": self.frequency,
             "duty_circle": self.duty_circle,
         }
@@ -75,6 +76,7 @@ class ParsedSignal(BaseSignal):
     def to_obj(self):
         return {
             "name": self.name,
+            "type": "parsed",
             "protocol": self.protocol,
             "address": _to_hex_str(self.address),
             "command": _to_hex_str(self.command)
