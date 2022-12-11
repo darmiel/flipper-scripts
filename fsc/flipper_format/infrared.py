@@ -47,12 +47,11 @@ class RawSignal(BaseSignal):
             "type": "raw",
             "frequency": self.frequency,
             "duty_circle": self.duty_circle,
+            "data": self.data,
         }
 
     def __str__(self) -> str:
         r = marshal(self.to_obj())
-        for i in range(0, len(self.data), MAX_DATA_PER_LINE):
-            r += f"\ndata: {' '.join([str(z) for z in self.data[i:i + MAX_DATA_PER_LINE]])}"
         return r
 
     def __hash__(self) -> int:
