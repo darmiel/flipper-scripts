@@ -47,7 +47,7 @@ class RawSignal(BaseSignal):
             "type": "raw",
             "frequency": self.frequency,
             "duty_circle": self.duty_circle,
-            "data": self.data,
+            "data": ' '.join([str(z) for z in self.data]),
         }
 
     def __str__(self) -> str:
