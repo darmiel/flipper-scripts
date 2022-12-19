@@ -11,8 +11,7 @@ from fsc.flipper_format.infrared import read_ir
 
 ####################################################################################################
 
-INPUT_FILES = "input_files/AC.ir"
-DB_FILES = "Flipper-IRDB-official/**/*.ir"
+DB_FILES = "**/*.ir"
 SILENT_MODE = True
 
 ####################################################################################################
