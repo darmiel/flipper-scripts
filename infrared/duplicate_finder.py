@@ -62,6 +62,7 @@ def check(db: List[IRDBFile], path: str) -> None:
     # parse signals in current file
     with FlipperFormat(path) as fff:
         signals = [z for z in read_ir(fff)]
+    signals_len = len(signals)
     
     for d in db:
         total_signal_count = d.count
@@ -78,8 +79,18 @@ def check(db: List[IRDBFile], path: str) -> None:
         
         # if more than 50% similar, output
         similarity = len(similars) / total_signal_count
+
+        # more signals in checking file
+        direction = '== '
+        if d.count > signals_len:
+            similarity -= 1 - (signals_len / d.count)
+            direction = '<< '
+        elif d.count < signals_len:
+            similarity -= 1 - (d.count / signals_len)
+            direction = '>> '
+
         if similarity >= .5:
-            header = f"{d.path} | {create_progress_bar(similarity)} confidence ┐"
+            header = f"{direction}{d.path} | {create_progress_bar(similarity)} confidence ┐"
             print(header)
             print(f"┌{'─'*(len(header)-2)}┘")
 
