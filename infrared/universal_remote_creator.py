@@ -13,7 +13,7 @@ ACCEPTED_SIGNAL_NAMES = {
     "POWER": ["power", "pwr", "sleep", "off", "turn_off", "power_toggle"]
 }
 
-INPUT_FILES = "_Converted_/**/*.ir" #"Flipper-IRDB/_Converted_/**/*.ir"
+INPUT_FILES = "_Converted_/**/*.ir"
 OUTPUT_FILE = "outpu4t.ir"
 WRITE_SOURCE = True
 
@@ -24,9 +24,7 @@ count = 0
 hashes = Counter()
 
 for file_name in glob(INPUT_FILES, recursive=True):
-    with open(OUTPUT_FILE, "w") as f:
-        f.write("test")
-        f.flush()
+    with open(OUTPUT_FILE, "w+") as f:
         if file_name == OUTPUT_FILE:
             print("oh oh!")
             break
