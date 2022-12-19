@@ -20,9 +20,9 @@ DB_FILES = "Flipper-IRDB-official/**/*.ir"
 class IRDBFile:
     def __init__(self, path) -> None:
         self.path = path
-        # load signal hashes
         self.hashes = {}
         self.count = 0
+        # load signal hashes
         with FlipperFormat(path) as fff:
             signals = read_ir(fff)
             for signal in signals:
@@ -53,10 +53,23 @@ def create_database() -> List[IRDBFile]:
         res.append(irdb)
     return res
 
-def create_progress_bar(percentage: float, width: int = 30) -> str:
-    count = math.ceil(percentage * width)
-    return f"[{'#'*count}{' '*(width-count)}] {round(percentage*100)}%"
+def create_progress_bar(percentage: float, width: int = 30, symbol: str = "#") -> str:
+    count = min(width, math.ceil(percentage * width))
+    return f"[{symbol*count}{' '*(width-count)}] ({round(percentage*100)} %)"
 
+def create_distribution(percentage: float, width: int = 30, symbol: str = "#") -> str:
+    count = min(width, math.ceil(percentage * width))
+    return symbol*count
+
+def max_list(inp: list, max: int) -> list:
+    res = []
+    current = 0
+    for l in inp:
+        current += 1
+        if current > max:
+            break
+        res.append(l)
+    return res
 
 def check(db: List[IRDBFile], path: str) -> None:
     # parse signals in current file
@@ -64,44 +77,98 @@ def check(db: List[IRDBFile], path: str) -> None:
         signals = [z for z in read_ir(fff)]
     signals_len = len(signals)
     
-    for d in db:
-        total_signal_count = d.count
+    for data in db:
+        total_signal_count = data.count
         # find similar signals in file
         
         # iterate over signals in current file
         # {current} -> {checking file}
-        similars = {}
-        for signal in signals:
-            similar = d.get_matching_signal_names(hash(signal))
-            if len(similar) == 0:
-                continue
-            similars[signal.name] = similar
+
+        # common: same signal in both files
+        # checked_only: signals only in checking file
+        # checking_only: signals only in checked file
+        common, input_only, checked_only = {}, {}, {}
+        common_count, input_count, checked_count = 0, 0, 0
+
+        """
+        common   [both]: { hash -> [POWER OFF, [POWER ON]] }
+        left [checking]: { hash -> FANS ON }
+        right [checked]: { hash -> FANS OFF }
+        """
+        for input_signal in signals:
+            input_signal_hash = hash(input_signal)
+            if input_signal_hash in data.hashes:
+                # both files have the same signal
+                common[input_signal_hash] = [input_signal.name, data.hashes[input_signal_hash]]
+                common_count += 1
+            else:
+                # the input file has a signal more
+                input_only[input_signal_hash] = input_signal.name
+                input_count += 1
+        for checked_signal_hash, checked_signal_name in data.hashes.items():
+            if not checked_signal_hash in common:
+                # the checked file has a signal more
+                checked_only[checked_signal_hash] = checked_signal_name
+                checked_count += 1
         
-        # if more than 50% similar, output
-        similarity = len(similars) / total_signal_count
+        # confidence from 0.0 to 1.0 that the checking signals match the file
+        # even if the checked file contains less signals, the confidence can be 1.0.
+        common_confidence = common_count / data.count
 
-        # more signals in checking file
-        direction = '== '
-        if d.count > signals_len:
-            similarity -= 1 - (signals_len / d.count)
-            direction = '<< '
-        elif d.count < signals_len:
-            similarity -= 1 - (d.count / signals_len)
-            direction = '>> '
+        # percentage how many new signals from input file to checked file
+        # if the input file contains 4 signals and the checked file only contains 3,
+        # the checking_balance would be 0.25 if the other 3 signals matche
+        input_balance = input_count / data.count
 
-        if similarity >= .5:
-            header = f"{direction}{d.path} | {create_progress_bar(similarity)} confidence ┐"
-            print(header)
-            print(f"┌{'─'*(len(header)-2)}┘")
+        # percentage how many new signals from checked file to checking file
+        # see above.
+        checked_balance = checked_count / signals_len
 
-            max_print_count = 5
+        # confidence from 0.0 to 1.0 that both the checking file and checked file 
+        # have the same amounts of signals
+        balance_confidence = min(data.count, signals_len) / max(data.count, signals_len)
+
+        # example output
+        # TODO: yes make this output pretty :)
+        """
+        Flipper-IRDB-official\AC.ir | [##############################] (100 %) signals match        ┐
+          :: BAL: [=============] 96 % | +++ (adds 12 signals, 4 %) - (misses 4 signals, 7 %)       |
+        ┌────────────────────────────┬──────────────────────┬──────────────────────┬────────────────┘
+        ├ ◙ POWER OFF ◄► ○ POWER OFF | ○ + POWER OFF        | ◙ - POWER OFF        |
+        ├ ◙ TEMP+     ◄► ○ TEMP+     | ○ + TEMP+            | ◙ - TEMP+            |
+        ├ ◙ TEMP-     ◄► ○ TEMP-     | ○ + TEMP-            | ◙ - TEMP-            |
+        └─ ... and 14 more ... ──────┴─ ... and 9 more ... ─┴─ ... and 1 more ... ─┘
+        """
+
+        if common_confidence >= .6 and balance_confidence >= .6:
+            line_header = f"{data.path} | {create_progress_bar(common_confidence)} signals match"
+            line_balance = f"  :: BAL: {create_progress_bar(balance_confidence, width=14, symbol='=')} | " + \
+                f"[{create_distribution(checked_balance * 3, width=10, symbol='+')}] (adds {checked_count} signals, {round(checked_balance * 100)}%/input) " + \
+                f"[{create_distribution(input_balance * 3, width=10, symbol='-')}] (misses {input_count} signals, {round(input_balance * 100)}%/checked)"
+            
+            max_line = max(len(line_header), len(line_balance)) + 1
+            line_header += ' ' * (max_line - len(line_header)) + "┐"
+            line_balance += ' ' * (max_line - len(line_balance)) + "|"
+
+            print(line_header)
+            print(line_balance)
+
+            # print first separator
+            print(f"┌{'─' * (len(line_header) - 2)}┘")
+            print(f"├ [+ adds: {', '.join(['/'.join(v) for _, v in checked_only.items()])}] [- misses: {', '.join(input_only.values())}]")
+
+            max_print_count = 3
             print_count = 0
-            for sn, sv in similars.items():
+
+            # print common
+            print_count = 0
+            for _, cn in common.items():
                 print_count += 1
                 if print_count > max_print_count:
-                    print("└ ... and", len(similars) - max_print_count, "more")
+                    print("└─ ... and", len(common) - max_print_count, "more common signals ...")
                     break
-                print(f"├ [checking] {sn} ◄► [checked] {', '.join(sv)}")
+                print(f"├ ◙ {cn[0]} ◄► ○ {', '.join(cn[1])}")
+
             print()
 
 if __name__ == "__main__":
