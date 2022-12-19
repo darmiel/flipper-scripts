@@ -8,12 +8,12 @@ from typing import List
 
 from fsc.flipper_format.base import FlipperFormat
 from fsc.flipper_format.infrared import read_ir
-from fsc.flipper_format.bulk import parse_all_ir_unique, write_all_ir_ir, write_all_ir_json
 
 ####################################################################################################
 
 INPUT_FILES = "input_files/AC.ir"
 DB_FILES = "Flipper-IRDB-official/**/*.ir"
+SILENT_MODE = True
 
 ####################################################################################################
 
@@ -22,8 +22,10 @@ class IRDBFile:
         self.path = path
         self.hashes = {}
         self.count = 0
+
+    def load(self):
         # load signal hashes
-        with FlipperFormat(path) as fff:
+        with FlipperFormat(self.path) as fff:
             signals = read_ir(fff)
             for signal in signals:
                 self.count += 1
@@ -31,27 +33,6 @@ class IRDBFile:
                 if h not in self.hashes:
                     self.hashes[h] = []
                 self.hashes[h].append(signal.name)
-
-    def get_matching_signal_names(self, hashed_signal) -> List[str]:
-        if hashed_signal in self.hashes:
-            return self.hashes[hashed_signal]
-        return []
-    
-    def get_all_matched_signal_names(self, hashed_signals) -> dict:
-        res = {}
-        for hs in hashed_signals:
-            res = self.get_matching_signal_names(hs)
-            if len(res) > 0:
-                res[hs] = res
-        return res
-
-def create_database() -> List[IRDBFile]:
-    res = []
-    for ir in glob(DB_FILES, recursive=True):
-        print("[DB] Loading", ir)
-        irdb = IRDBFile(ir)
-        res.append(irdb)
-    return res
 
 def create_progress_bar(percentage: float, width: int = 30, symbol: str = "#") -> str:
     count = min(width, math.ceil(percentage * width))
@@ -61,24 +42,18 @@ def create_distribution(percentage: float, width: int = 30, symbol: str = "#") -
     count = min(width, math.ceil(percentage * width))
     return symbol*count
 
-def max_list(inp: list, max: int) -> list:
-    res = []
-    current = 0
-    for l in inp:
-        current += 1
-        if current > max:
-            break
-        res.append(l)
-    return res
-
-def check(db: List[IRDBFile], path: str) -> None:
+def check(db: List[IRDBFile], path: str) -> bool:
     # parse signals in current file
     with FlipperFormat(path) as fff:
         signals = [z for z in read_ir(fff)]
     signals_len = len(signals)
     
+    found_any = False
     for data in db:
-        total_signal_count = data.count
+        # ignore self
+        if data.path == path:
+            continue
+
         # find similar signals in file
         
         # iterate over signals in current file
@@ -140,7 +115,18 @@ def check(db: List[IRDBFile], path: str) -> None:
         └─ ... and 14 more ... ──────┴─ ... and 9 more ... ─┴─ ... and 1 more ... ─┘
         """
 
-        if common_confidence >= .6 and balance_confidence >= .6:
+        if common_confidence >= .8 and balance_confidence >= .8:
+            # print file name
+            if not found_any:
+                print()
+                print(f"## `{path}`")
+                print()
+                print("```")
+            else:
+                print()
+                print("---")
+                print()
+
             line_header = f"{data.path} | {create_progress_bar(common_confidence)} signals match"
             line_balance = f"  :: BAL: {create_progress_bar(balance_confidence, width=14, symbol='=')} | " + \
                 f"[{create_distribution(checked_balance * 3, width=10, symbol='+')}] (adds {checked_count} signals, {round(checked_balance * 100)}%/input) " + \
@@ -169,12 +155,38 @@ def check(db: List[IRDBFile], path: str) -> None:
                     break
                 print(f"├ ◙ {cn[0]} ◄► ○ {', '.join(cn[1])}")
 
-            print()
+            found_any = True
+    if found_any:
+        print("```")
+    return found_any
+
+def create_database() -> List[IRDBFile]:
+    res = []
+    for ir in glob(DB_FILES, recursive=True):
+        if not SILENT_MODE: print("[DB] Loading", ir)
+        irdb = IRDBFile(ir)
+        irdb.load()
+        res.append(irdb)
+    return res
 
 if __name__ == "__main__":
-    print("[db] Reading database ...")
+    if not SILENT_MODE: print("[db] Reading database ...")
     db = create_database()
-    print("  [db] done!")
-    print()
-    for file in glob(INPUT_FILES, recursive=True):
-        check(db, file)
+    if not SILENT_MODE: 
+        print("  [db] done!")
+        print()
+
+    input_files = []
+    for arg in sys.argv[1:]:
+        if arg.startswith("glob:"):
+            input_files.extend(glob(arg[5:], recursive=True))
+        elif arg.startswith("file:"):
+            with open(arg[5:], "r") as fd:
+                input_files.extend([z.strip() for z in fd.readlines()])
+        else:
+            input_files.append(arg)
+
+    found_any = False
+    for file in input_files:
+        if check(db, file):
+            found_any = True
