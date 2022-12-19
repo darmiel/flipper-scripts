@@ -13,6 +13,7 @@ class FlipperFormat:
 
     def __init__(self, file_name):
         self.file_name = file_name
+        self.last_comment = ""
         self.fd = open(self.file_name, "r", encoding="UTF-8")
 
     def __enter__(self):
