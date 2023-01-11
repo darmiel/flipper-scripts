@@ -1,55 +1,89 @@
 import sys
 sys.path.insert(0, '..') # ugly ass hack :/
 
+import json
+import os
+
 from glob import glob
-from collections import Counter
 
 from fsc.flipper_format.base import FlipperFormat
 from fsc.flipper_format.infrared import read_ir
 
 ####################################################################################################
 
-ACCEPTED_SIGNAL_NAMES = {
-    "POWER": ["power", "pwr", "sleep", "off", "turn_off", "power_toggle"]
-}
+if os.path.exists("signal_name_rewrites.json"):
+    # load accepted signal names from json file
+    with open("signal_name_rewrites.json", "r") as fd:
+        ACCEPTED_SIGNAL_NAMES = json.load(fd)
+else:
+    # write default json file
+    # !!!
+    # DON'T CHANGE THIS
+    # MAKE CHANGES IN signal_name_rewrites.json
+    # !!!
+    ACCEPTED_SIGNAL_NAMES = {
+        "POWER": ["power", "power on", "power off"],
+    }
+    with open("signal_name_rewrites.json", "w") as fd:
+        json.dump(fd, ACCEPTED_SIGNAL_NAMES, indent=4)
 
-INPUT_FILES = "_Converted_/**/*.ir"
-OUTPUT_FILE = "outpu4t.ir"
+INPUT_FILES = "Flipper-IRDB/TVs/**/*.ir"
+OUTPUT_FILE = "output_universal_tv.ir"
 WRITE_SOURCE = True
 
 ####################################################################################################
 
+# transform accepted signal names to a dict
+# with the original name as key and the accepted name as value
 accepted = {iv.strip().lower(): ok for ok, ov in ACCEPTED_SIGNAL_NAMES.items() for iv in ov}
-count = 0
-hashes = Counter()
 
-for file_name in glob(INPUT_FILES, recursive=True):
-    with open(OUTPUT_FILE, "w+") as f:
+# keep track of how many signals were written
+count = 0
+
+# keep track of how many duplicates were skipped
+added = {}
+
+with open(OUTPUT_FILE, "w") as fd:
+    for file_name in glob(INPUT_FILES, recursive=True):
+        file_count = 0
+        file_skip_count = 0
+
+        # skip output file
         if file_name == OUTPUT_FILE:
             print("oh oh!")
-            break
+            continue
+        
+        # read signals from file
         with FlipperFormat(file_name) as fff:
-            file_count = 0
             for signal in read_ir(fff):
-                if signal.name.strip().lower() not in accepted:
+                # check if signal name is accepted
+                original_name = signal.name.strip().lower()
+                if original_name not in accepted:
                     continue
+                
+                # rewrite signal name to accepted name
+                signal.name = accepted[original_name]
 
-                # skip duplicates | WIP
                 h = hash(signal)
-                hashes[h] += 1
-                if hashes[h] > 1:
+                if h in added:
+                    added[h] += 1
+                    file_skip_count += 1
                     continue
+                added[h] = 0
                 
                 # write source header above signal (if WRITE_SOURCE was enabled)
                 if WRITE_SOURCE:
-                    f.write(f"# from: {file_name}\n#\n")
+                    fd.write(f"# from: {file_name}\n#\n")
                 
                 # write signal to file
-                print(signal)
-                f.write(str(signal))
-                f.write("\n#\n")
-                count += 1; file_count += 1
-            print(f"[local] Wrote {file_count} signals from {file_name} to {OUTPUT_FILE}")
+                fd.write(str(signal))
+                fd.write("\n#\n")
 
-print(f"[global] Wrote {count} signals to {OUTPUT_FILE}")
-print(f"[global] Skipped a total of {sum([z for z in hashes.values() if z > 1])} duplicates")
+                # update counters
+                count += 1; file_count += 1
+
+            # print summary for current file
+            print(f"[local] Wrote {file_count} [skipped: {file_skip_count}] signals from {file_name} to {OUTPUT_FILE}")
+
+print(f"[global] Wrote a total of {count} signals to {OUTPUT_FILE}")
+print(f"[global] Skipped a total of {sum([z for z in added.values() if z > 1])} duplicates")

@@ -189,3 +189,5 @@ if __name__ == "__main__":
     for file in input_files:
         if check(db, file):
             found_any = True
+    if found_any:
+        sys.exit("found duplicates")
