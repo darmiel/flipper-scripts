@@ -27,8 +27,8 @@ from fsc.flipper_format.infrared import read_ir
 
 ####################################################################################################
 
-DB_FILES = "**/*.ir"
-SILENT_MODE = True
+DB_FILES = "Flipper-IRDB*/**/*.ir"
+SILENT_MODE = False
 
 ####################################################################################################
 
@@ -89,7 +89,7 @@ def check(db: List[IRDBFile], path: str) -> None:
 
         # print matches
         if len(matches) == 0:
-            print("# ⚠ Not in IRDB")
+            print("# [x] Not in IRDB")
         else:
             for match in matches:
                 print(str(match))
