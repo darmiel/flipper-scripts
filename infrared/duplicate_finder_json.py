@@ -89,7 +89,7 @@ def check(db: List[IRDBFile], path: str) -> list:
 
         if common_confidence >= CONFIDENCE and balance_confidence >= CONFIDENCE:
             result.append({
-                "path": path,
+                "path": data.path,
                 "confidence": common_confidence,
                 "balance": {
                     "confidence": balance_confidence,
