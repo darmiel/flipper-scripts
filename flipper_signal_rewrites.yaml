@@ -1,0 +1,49 @@
+# Names taken from:
+# https://github.com/logickworkshop/Flipper-IRDB/tree/main#organization
+
+# Name of the action
+- name: TV
+  # which paths to include - should be a glob pattern
+  # e.g. **/*.ir
+  include:
+    - "Flipper-IRDB/TVs/**/*.ir"
+  # rewrite changes the names of buttons to the key name if one of the values match
+  # e.g. POWER: [ /^p(owe|w)r$/ ] -> if a button was named "PWR" before it would be renamed to "PWR"
+  # NOTE: the values should be in lower-case, and they should not contain `_` or ` `
+  rewrite:
+    POWER: &tv-rewrites-power
+      - onoff
+      - offon
+      # RegEx patterns should start and end with a "/" to treat them as regular expressions
+      # NOTE: make sure you add ^ and $ to prevent rewriting buttons that _contain_ the pattern,
+      # e.g. POWER: [ /pwr/ ] -> would rename `PWR` and `SHIPWRECKS` to `POWER`
+      #      POWER: [ /^pwr$/ ] -> would rename only `PWR` to `POWER`
+      - "/^p(owe|w)r$/"
+
+- name: Audio
+  include:
+    - "Flipper-IRDB/Audio_Receivers/**/*.ir"
+    - "Flipper-IRDB/SoundBars/**/*.ir"
+    - "Flipper-IRDB/Speakers/**/*.ir"
+  POWER: *tv-rewrites-power
+  VOL+: *tv-rewrites-vol-plus
+  VOL-: *tv-rewrites-vol-minus
+  MUTE: *tv-rewrites-mute
+
+# You can also replace any values using a simple find & replace:
+- name: "Replace Underscores"
+  include:
+    - "Flipper-IRDB/**/*.ir"
+  # if you want to exclude some files/directories, you can specify them using a glob pattern
+  exclude:
+    - "Flipper-IRDB/_Converted_/**/*.ir"
+  # normally, files would be ignored if they have been handled by one of the above paths
+  # setting ignore-previous to true forces to check the files again
+  ignore-previous: true
+  replace:
+    # replace spaces with _
+    # e.g. `Power On` -> `Power_On`
+    - find: "/\\s+/"
+      replace: "_"
+      keys:
+        - name
