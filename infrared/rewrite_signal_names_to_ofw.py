@@ -1,23 +1,34 @@
 from glob import glob
+from re import compile, Pattern
 
 # glob pattern - rewrite which files
-INPUT_FILES: str = "Flipper-IRDB/**/*.ir"
-
-# check transformed name against pattern?
-VERIFY: bool = False
-# pattern to check for correct name transformation
-import re
-pattern = re.compile("^[A-Z0-9][a-z0-9_\-\+\s]*$")
+INPUT_FILES: str = "Flipper-IRDB/Audio_Receivers/**/*.ir"
 
 # manually overwrite some names
-rewrites = {
-    "Power": [ "PWR" ],
-    "Vol_dn": ["VOL-", "Vol_-"],
-    "Vol_up": ["VOL+", "Vol_+"],
-    "Ch_next": ["CH+", "CH_Up", "CHANNEL_UP", "CHANNEL UP"],
-    "Ch-Prev": ["CH-", "CH_Dn", "CHANNEL_DOWN", "CHANNEL_DN", "CHANNEL_DWN", "CHANNEL DOWN"]
-}
-rewrite_internal = {v: k for k, u in rewrites.items() for v in u}
+rewrite_internal = {v: k for k, u in {
+    "Power": [
+        "power",
+        "pwr",
+        compile("^((power|pwr)[_\\s]*)?(toggle|on|off)$"),
+        compile("^(turn[_\\s]*)?(on|off)$")
+    ],
+    "Vol_dn": [
+         compile("^vol(ume)?[_\\s]*(d(o?w)?n|[v\\-])$")
+    ],
+    "Vol_up": [
+        compile("^vol(ume)?[_\\s]*(up|[\\^+])$")
+    ],
+    "Ch_next": [
+        compile("^ch(an(nel)?)?[_\\s]*(up|[\\^+])$")
+    ],
+    "Ch_prev": [
+        compile("^ch(an(nel)?)?[_\\s]*(d(o?w)?n|[\\v-])$")
+    ],
+    "Mute": [
+        "mte",
+        compile("^mute.*$")
+    ]
+}.items() for v in u}
 
 for file_name in glob(INPUT_FILES, recursive=True):
     output = ""
@@ -34,18 +45,22 @@ for file_name in glob(INPUT_FILES, recursive=True):
             key = line[:col+1]
             value = line[col+1:].strip()
 
-            if value.lower() in rewrites:
-                new_value = rewrites[value.lower()]
-            else:
+            new_value = None
+            for k in rewrite_internal:
+                if type(k) == str:
+                    if value.lower() == k.lower():
+                        new_value = rewrite_internal[k]
+                        break
+                if type(k) == Pattern:
+                    if k.match(value.lower()):
+                        new_value = rewrite_internal[k]
+                        break
+
+            if new_value is None:
+                new_value = value
                 # transform value
-                new_value = value[:1].upper() + value[1:].lower()
-                new_value = new_value.replace(' ', "_")
-            
-            if VERIFY:
-                if not pattern.match(new_value):
-                    print("[verify] failed in", file_name, "for", value, "-> tried", new_value, "reverting to default")
-                    output += line
-                    continue
+                # new_value = value[:1].upper() + value[1:].lower()
+                # new_value = new_value.replace(' ', "_")
 
             output += f"name: {new_value}\n"
             if new_value != value:
